@@ -63,7 +63,7 @@ class JellyfinLibraryProvider(backend.LibraryProvider):
                     if track.get('Type') == 'Audio'
                 ]
 
-                contents = sorted(contents, key=lambda k: (k.track_no, k.name))
+                contents = sorted(contents, key=lambda k: (k.disc_no, k.track_no, k.name))
 
             elif uri.startswith('jellyfin:artist:') and len(parts) == 3:
                 artist_id = parts[-1]

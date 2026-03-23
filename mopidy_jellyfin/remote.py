@@ -584,7 +584,7 @@ class JellyfinHandler(object):
             name=name,
             bitrate=bitrate,
             track_no=track.get('IndexNumber', 0) if track.get('IndexNumber', 0) >= 0 else 0,
-            disc_no=track.get('ParentIndexNumber'),
+            disc_no=track.get('ParentIndexNumber') if track.get('ParentIndexNumber', 0) >= 0 else 0,
             genre=','.join(track.get('Genres', [])),
             artists=self.create_artists(track),
             album=self.create_album(track),
@@ -919,7 +919,7 @@ class JellyfinHandler(object):
         tracks = []
         for album, track_list in album_dict.items():
             track_list.sort(
-                key=lambda k: (k.get('IndexNumber', 0), k.get('Name'))
+                key=lambda k: (k.get('ParentIndexNumber', 0), k.get('IndexNumber', 0), k.get('Name'))
             )
 
             # add tracks to list
