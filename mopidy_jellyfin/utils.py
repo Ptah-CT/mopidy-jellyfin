@@ -39,3 +39,23 @@ class cache(object):
                 return self.func(*args)
 
         return _memoized
+
+def create_headers(device, device_id, version, token=None):
+    """Return header dict that is needed to talk to the Jellyfin API.
+    """
+    headers = {}
+
+    authorization = (
+        f'MediaBrowser , '
+        f'Client="Mopidy", '
+        f'Device="{device}", '
+        f'DeviceId="{device_id}", '
+        f'Version="{version}"'
+    )
+
+    headers['Authorization'] = authorization
+
+    if token:
+        headers['Authorization'] += f', Token="{token}"'
+
+    return headers
