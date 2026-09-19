@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "Mopidy-Jellyfin"
-version = "1.0.6"
+version = "1.1.0"
 
 description = "Mopidy extension for playing music from jellyfin"
 readme = "README.rst"

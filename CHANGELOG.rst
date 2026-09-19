@@ -1,6 +1,15 @@
 Changelog
 =========
 
+v1.1.0
+---------------------------------------
+
+- fix(core): Fixes compatibility with Mopidy >= 4.0
+- Fix sorting of tracks on multi disc albums
+- Migrate to pyproject
+- Update authentication for jellyfin 12 compatibility
+- Added potential fix for Image fetching
+
 v1.0.6
 ---------------------------------------
 
