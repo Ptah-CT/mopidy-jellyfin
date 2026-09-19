@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "Mopidy-Jellyfin"
+version = "1.0.6"
+
+description = "Mopidy extension for playing music from jellyfin"
+readme = "README.rst"
+license = { text = "Apache-2.0" }
+authors = [
+    { name = "Matt Carlton", email = "mcarlton00@gmail.com" },
+]
+classifiers = [
+    "Environment :: No Input/Output (Daemon)",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Topic :: Multimedia :: Sound/Audio :: Players",
+]
+dependencies = [
+    "Mopidy >= 3.0",
+    "Pykka >= 1.1",
+    "requests >= 2.20",
+    "setuptools",
+    "unidecode >= 1.1",
+    "websocket-client >= 0.57",
+]
+
+[project.entry-points."mopidy.ext"]
+jellyfin = "mopidy_jellyfin:Extension"
+
+[project.urls]
+Homepage = "https://github.com/jellyfin/mopidy-jellyfin"
