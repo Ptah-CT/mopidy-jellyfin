@@ -1,7 +1,7 @@
 from __future__ import unicode_literals
 
 from mopidy import httpclient, models
-from mopidy_jellyfin.utils import cache
+from mopidy_jellyfin.utils import cache, create_headers
 import mopidy_jellyfin
 from .http import JellyfinHttpClient
 from unidecode import unidecode
@@ -65,7 +65,12 @@ class JellyfinHandler(object):
 
         # create authentication headers
         self.auth_data = self._auth_payload()
-        headers = self._create_headers()
+        headers = create_headers(
+            mopidy_jellyfin.Extension.device_name,
+            mopidy_jellyfin.Extension.device_id,
+            mopidy_jellyfin.__version__,
+            self.token
+        )
         self.http = JellyfinHttpClient(headers, cert, proxy)
         response_url = self.http.check_redirect(self.hostname)
         if self.hostname != response_url:
@@ -74,8 +79,10 @@ class JellyfinHandler(object):
         if not self.token:
             self._login()
 
-        if self.token:
-           self.http.session.headers.update({'x-mediabrowser-token': self.token})
+        if self.token and "Token" not in headers["Authorization"]:
+            headers["Authorization"] += f', Token="{self.token}"'
+            self.http.session.headers.update({'Authorization': headers})
+
     def _save_token(self, token):
         # Save the authentication token where the frontend can also access it
         cache_dir = mopidy_jellyfin.Extension.get_cache_dir(self.config)
@@ -108,30 +115,6 @@ class JellyfinHandler(object):
             'username': self.username,
             'Pw': self.password
         }
-
-    def _create_headers(self, token=None):
-        """Return header dict that is needed to talk to the Jellyfin API.
-        """
-        headers = {}
-
-        authorization = (
-            'MediaBrowser , '
-            'Client="Mopidy", '
-            'Device="{device}", '
-            'DeviceId="{device_id}", '
-            'Version="{version}"'
-        ).format(
-            device=mopidy_jellyfin.Extension.device_name,
-            device_id=mopidy_jellyfin.Extension.device_id,
-            version=mopidy_jellyfin.__version__
-        )
-
-        headers['x-emby-authorization'] = authorization
-
-        if token:
-            headers['x-mediabrowser-token'] = self.token
-
-        return headers
 
     def api_url(self, endpoint, url_params={}):
         """Returns a joined url.

@@ -10,6 +10,7 @@ import requests
 import threading
 import mopidy_jellyfin
 from .http import JellyfinHttpClient
+from .utils import create_headers
 
 import websocket
 
@@ -45,8 +46,15 @@ class WSClient(threading.Thread):
         proxy = self.client.config.get('proxy', None)
 
         self.token = self.client.token
-        headers = {'x-mediabrowser-token': self.token}
-        self.http = JellyfinHttpClient(headers, cert, proxy)
+        self.headers = create_headers(
+            mopidy_jellyfin.Extension.device_name,
+            mopidy_jellyfin.Extension.device_id,
+            mopidy_jellyfin.__version__,
+            self.token
+        )
+
+        self.http = JellyfinHttpClient(self.headers, cert, proxy)
+        self.websocket_error = False
         threading.Thread.__init__(self)
 
     def send(self, message, data=""):
@@ -67,10 +75,11 @@ class WSClient(threading.Thread):
             server = self.hostname.replace('https', "wss")
         else:
             server = self.hostname.replace('http', "ws")
-        wsc_url = "%s/socket?api_key=%s&device_id=%s" % (server, self.token, self.device_id)
+        wsc_url = f"{server}/socket"
 
         self.wsc = websocket.WebSocketApp(
             wsc_url,
+            header=self.headers,
             on_message=lambda ws, message: self.on_message(ws, message),
             on_error=lambda ws, error: self.on_error(ws, error))
         self.wsc.on_open = lambda ws: self.on_open(ws)
@@ -87,10 +96,17 @@ class WSClient(threading.Thread):
                 retry_count += 1
 
     def on_error(self, ws, error):
+        self.websocket_error = True
         logger.error(error)
 
     def on_open(self, ws):
+        # Wait to make sure previous keepalive cycle has ended
+        if self.websocket_error:
+            time.sleep(30)
+            self.websocket_error = False
+
         self.post_capabilities()
+        self.send_keepalive(ws)
         self.callback('WebSocketConnect', None)
 
     def on_message(self, ws, message):
@@ -139,3 +155,22 @@ class WSClient(threading.Thread):
             self.client.playstate(data)
         elif message == 'GeneralCommand':
             self.client.general_command(data)
+
+    def send_keepalive(self, ws):
+        # Stop the keepalive cycle if an error has been detected
+        if self.websocket_error:
+            return
+        keepalive_payload = json.dumps({"MessageType": "KeepAlive", "Data": 30})
+        # Send the keepalive, or register an error
+        try:
+            ws.send(keepalive_payload)
+        except:
+            self.websocket_error = True
+            return
+        # Schedule the next message
+        self.schedule_keepalive(ws)
+
+    def schedule_keepalive(self, ws):
+        # Schedule a keepalive message in 30 seconds
+        timer = threading.Timer(30, self.send_keepalive, kwargs={'ws': ws})
+        timer.start()

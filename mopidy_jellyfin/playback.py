@@ -28,7 +28,7 @@ class JellyfinPlaybackProvider(backend.PlaybackProvider):
 
             url_params = {
                 'MaxStreamingBitrate': bitrate,
-                'api_key': self.backend.remote.token,
+                'ApiKey': self.backend.remote.token,
                 'UserId': self.backend.remote.user_id,
                 'DeviceId': mopidy_jellyfin.Extension.device_id,
                 'PlaySessionId': session_id,
