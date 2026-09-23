@@ -6,7 +6,6 @@ from __future__ import division, absolute_import, print_function, unicode_litera
 import json
 import logging
 import time
-import requests
 import threading
 import mopidy_jellyfin
 from .http import JellyfinHttpClient
@@ -14,8 +13,6 @@ from .utils import create_headers
 
 import websocket
 
-from mopidy import core
-import mopidy
 
 ##################################################################################################
 
@@ -54,7 +51,8 @@ class WSClient(threading.Thread):
         )
 
         self.http = JellyfinHttpClient(self.headers, cert, proxy)
-        self.websocket_error = False
+        self.retry_count = 0
+        self.keepalive_stop = None
         threading.Thread.__init__(self)
 
     def send(self, message, data=""):
@@ -81,39 +79,45 @@ class WSClient(threading.Thread):
             wsc_url,
             header=self.headers,
             on_message=lambda ws, message: self.on_message(ws, message),
-            on_error=lambda ws, error: self.on_error(ws, error))
+            on_error=lambda ws, error: self.on_error(ws, error),
+            on_close=lambda ws, code, reason: self.on_close(ws, code, reason))
         self.wsc.on_open = lambda ws: self.on_open(ws)
 
-        retry_count = 0
         while not self.stop:
 
-            time.sleep(retry_count * 5)
+            time.sleep(self.retry_count * 5)
             self.wsc.run_forever(ping_interval=10)
 
             # If connection fails, attempt to reconnect every 60 seconds at max
             max_tries = 12
-            if retry_count < max_tries:
-                retry_count += 1
+            if self.retry_count < max_tries:
+                self.retry_count += 1
 
     def on_error(self, ws, error):
-        self.websocket_error = True
         logger.error(error)
 
     def on_open(self, ws):
-        # Wait to make sure previous keepalive cycle has ended
-        if self.websocket_error:
-            time.sleep(30)
-            self.websocket_error = False
+        # A working connection starts the backoff over
+        self.retry_count = 0
+        logger.info('Websocket connected')
 
         self.post_capabilities()
-        self.send_keepalive(ws)
         self.callback('WebSocketConnect', None)
+
+    def on_close(self, ws, code, reason):
+        self.stop_keepalive()
+        logger.warning(
+            'Websocket closed: code=%s reason=%r', code, reason)
 
     def on_message(self, ws, message):
         # Receive messages from Jellyfin, sends to callback for processing
 
         message = json.loads(message)
         data = message.get('Data', {})
+
+        if message['MessageType'] == 'ForceKeepAlive':
+            self.start_keepalive(data)
+            return
 
         self.callback(message['MessageType'], data)
 
@@ -132,7 +136,7 @@ class WSClient(threading.Thread):
             'PlayableMediaTypes': "Audio",
             'SupportsMediaControl': True,
             'SupportedCommands': (
-                    "VolumeUp,VolumeDown,ToggleMute"
+                    "VolumeUp,VolumeDown,ToggleMute,"
                     "SetAudioStreamIndex,"
                     "SetRepeatMode,"
                     "Mute,Unmute,SetVolume,"
@@ -156,21 +160,30 @@ class WSClient(threading.Thread):
         elif message == 'GeneralCommand':
             self.client.general_command(data)
 
-    def send_keepalive(self, ws):
-        # Stop the keepalive cycle if an error has been detected
-        if self.websocket_error:
-            return
-        keepalive_payload = json.dumps({"MessageType": "KeepAlive", "Data": 30})
-        # Send the keepalive, or register an error
-        try:
-            ws.send(keepalive_payload)
-        except:
-            self.websocket_error = True
-            return
-        # Schedule the next message
-        self.schedule_keepalive(ws)
+    def start_keepalive(self, timeout):
+        # The server sends ForceKeepAlive with its timeout in seconds and
+        # drops the connection if no KeepAlive arrives in time; websocket
+        # pings are not enough.  Same contract as jellyfin-sdk-typescript:
+        # answer right away, then every timeout / 2 seconds, and stop when
+        # the socket closes.
+        self.stop_keepalive()
+        stop = threading.Event()
+        self.keepalive_stop = stop
+        keepalive = threading.Thread(
+            target=self.keepalive_loop, args=(stop, timeout / 2),
+            name='jellyfin-keepalive')
+        keepalive.daemon = True
+        keepalive.start()
 
-    def schedule_keepalive(self, ws):
-        # Schedule a keepalive message in 30 seconds
-        timer = threading.Timer(30, self.send_keepalive, kwargs={'ws': ws})
-        timer.start()
+    def keepalive_loop(self, stop, interval):
+        while not stop.is_set():
+            try:
+                self.send('KeepAlive')
+            except websocket.WebSocketConnectionClosedException as error:
+                logger.warning('KeepAlive on a closed websocket: %s', error)
+                return
+            stop.wait(interval)
+
+    def stop_keepalive(self):
+        if self.keepalive_stop is not None:
+            self.keepalive_stop.set()
