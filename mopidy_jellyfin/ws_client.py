@@ -80,8 +80,8 @@ class WSClient(threading.Thread):
             header=self.headers,
             on_message=lambda ws, message: self.on_message(ws, message),
             on_error=lambda ws, error: self.on_error(ws, error),
-            on_close=lambda ws, code, reason: self.on_close(ws, code, reason))
-        self.wsc.on_open = lambda ws: self.on_open(ws)
+            on_close=lambda ws, code, reason: self.on_close(code, reason))
+        self.wsc.on_open = lambda ws: self.on_open()
 
         while not self.stop:
 
@@ -96,7 +96,7 @@ class WSClient(threading.Thread):
     def on_error(self, ws, error):
         logger.error(error)
 
-    def on_open(self, ws):
+    def on_open(self):
         # A working connection starts the backoff over
         self.retry_count = 0
         logger.info('Websocket connected')
@@ -104,7 +104,7 @@ class WSClient(threading.Thread):
         self.post_capabilities()
         self.callback('WebSocketConnect', None)
 
-    def on_close(self, ws, code, reason):
+    def on_close(self, code, reason):
         self.stop_keepalive()
         logger.warning(
             'Websocket closed: code=%s reason=%r', code, reason)
